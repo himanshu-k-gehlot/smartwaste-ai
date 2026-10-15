@@ -114,15 +114,39 @@ def seed_all(db: Session):
     all_bins = []
     now = datetime.utcnow()
 
+    # Fill-level buckets to ensure realistic distribution:
+    # ~30% normal (5-60%), ~35% warning (60-75%), ~25% critical (75-98%), ~10% offline/low-battery
+    FILL_BUCKETS = (
+        [round(random.uniform(5, 60), 1) for _ in range(30)] +
+        [round(random.uniform(60, 75), 1) for _ in range(35)] +
+        [round(random.uniform(75, 98), 1) for _ in range(25)] +
+        [round(random.uniform(5, 40), 1) for _ in range(10)]
+    )
+    random.shuffle(FILL_BUCKETS)
+    fill_idx = [0]  # mutable counter
+
+    def next_fill():
+        v = FILL_BUCKETS[fill_idx[0] % len(FILL_BUCKETS)]
+        fill_idx[0] += 1
+        return v
+
     for zone in zone_objs:
         locality = zone.locality
         addresses = ADDRESSES.get(locality, ["Main Road", "Cross Road", "Market"])
         n_bins = random.randint(12, 16)
 
         for _ in range(n_bins):
-            fill = round(random.uniform(5, 98), 1)
-            temp = round(random.uniform(22, 62), 1)
-            batt = round(random.uniform(8, 100), 1)
+            fill = next_fill()
+            # Temp: mostly normal (22-40°C), occasional high
+            temp = round(random.choices(
+                [random.uniform(22, 40), random.uniform(40, 58)],
+                weights=[0.85, 0.15]
+            )[0], 1)
+            # Battery: mostly healthy, occasional low
+            batt = round(random.choices(
+                [random.uniform(40, 100), random.uniform(8, 25)],
+                weights=[0.85, 0.15]
+            )[0], 1)
             w_type = random.choices(WASTE_TYPES, WASTE_WEIGHTS)[0]
             status = derive_status(fill, batt, temp)
             last_coll = now - timedelta(hours=random.randint(2, 72))
